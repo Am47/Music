@@ -1,6 +1,6 @@
 from flask import Flask, request, render_template, make_response, send_from_directory
 import os
-from helpers import upscaler, makePhoneLike , denoise_and_delay, applyGainCompression, applyGrayscale, colorInvert, voiceEhancement
+from helpers import upscaler, makePhoneLike , denoise_and_delay, applyGainCompression, applyGrayscale, colorInvert, voiceEhancement, voiceEnhancement
 
 app = Flask(__name__, static_folder="static",instance_relative_config=True)
 _UPLOADED_ = 0
