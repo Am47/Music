@@ -73,7 +73,7 @@ def applyFilter():
             elif k == "upscale":
                 upscaler(int(v["upscaleTargetWidth"]), int(v["upscaleTargetHeight"]), prevFileName, _FILE_NAME_)
             elif k == "denoiseDelay":
-                denoise_and_delay(_FILE_NAME_ , int (v["noisePower"]) , int(v["delay"]) , int(v["delayGain"]) )
+                denoise_and_delay( int (v["noisePower"]) , int(v["delay"]) , int(v["delayGain"]) , prevFileName , _FILE_NAME_)
             elif k == "grayscale":
                 applyGrayscale(prevFileName,_FILE_NAME_)
             elif k == "gainCompressor":
