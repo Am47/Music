@@ -77,7 +77,7 @@ def applyFilter():
             elif k == "grayscale":
                 applyGrayscale(prevFileName,_FILE_NAME_)
             elif k == "gainCompressor":
-                applyGainCompression(int(v["gainCompressorThreshold"]), int(v["limiterThreshold"]), prevFileName, _FILE_NAME_)
+                applyGainCompression(float(v["gainCompressorThreshold"]), float(v["limiterThreshold"]), prevFileName, _FILE_NAME_)
             elif k == "voiceEnhancement":
                 voiceEnhancement(int(v["preemphasisAlpha"]), int(v["highPassFilter"]), prevFileName, _FILE_NAME_)
             elif k == "colorinvert":
