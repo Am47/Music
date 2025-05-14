@@ -1,6 +1,7 @@
 import ffmpeg
 from scipy.signal import butter, lfilter
 import scipy.io.wavfile as wav
+from scipy.signal import wiener
 
 
 import numpy as np
@@ -38,96 +39,70 @@ def makePhoneLike(filterOrder, sideGain, readFrom, writeTo):
     return 
 
 
-def denoise_and_delay(filterOrder, delay_ms, delay_gain, readFrom, writeTo):
-    """
-    Apply denoise using Wiener filter and delay effects to audio.
-    
-    Parameters:
-    - filterOrder: Order of the filter (controls strength of wiener filter)
-    - delay_ms: Delay time in milliseconds
-    - delay_gain: Delay gain as float (0-1)
-    - readFrom: Input video file path
-    - writeTo: Output video file path
-    """
-    global _AUDIO_FILE_
-    
-    # Extract video and audio streams
-    vid = ffmpeg.input(readFrom).video
-    au = ffmpeg.input(readFrom).audio
-    
-    # Get audio info from the file
-    info = ffmpeg.probe(readFrom, cmd="ffprobe")
-    noChannels = info["streams"][1]["channels"]  # extract number of channels
-    
-    # Extract audio to temporary file
-    au.output(_AUDIO_FILE_, ac=noChannels).overwrite_output().run()
-    
-    # Read the audio file
-    sample_rate, samples_original = wav.read(_AUDIO_FILE_)
-    
-    # Convert to float for processing
-    samples_float = samples_original.astype(np.float64)
-    
-    # Step 1: Denoise the audio using a Wiener filter
-    from scipy.signal import wiener
-    
-    # Adjust filter strength based on order
-    noise_reduction_strength = max(3, int(filterOrder) + 1)
-    
-    # Apply Wiener filter for denoising
-    if len(samples_original.shape) > 1:  # For stereo audio
-        denoised_audio = np.zeros_like(samples_float)
-        for channel in range(samples_original.shape[1]):
-            denoised_audio[:, channel] = wiener(samples_float[:, channel], 
-                                              mysize=noise_reduction_strength)
-    else:  # For mono audio
-        denoised_audio = wiener(samples_float, mysize=noise_reduction_strength)
-    
-    # Step 2: Add delay effect (digital delay implementation)
-    # Convert delay parameters
-    delay_samples = int((delay_ms / 1000) * sample_rate)
-    
-    # Create a delayed version of the audio
-    if len(denoised_audio.shape) > 1:  # For stereo audio
-        delayed_audio = np.zeros_like(denoised_audio)
-        for channel in range(denoised_audio.shape[1]):
-            # Create delayed signal
-            delayed_signal = np.zeros_like(denoised_audio[:, channel])
-            if delay_samples < len(denoised_audio):
-                delayed_signal[delay_samples:] = denoised_audio[:-delay_samples, channel]
-            
-            # Mix original and delayed signal
-            delayed_audio[:, channel] = denoised_audio[:, channel] + delayed_signal * delay_gain
-    else:  # For mono audio
-        # Create delayed signal
-        delayed_signal = np.zeros_like(denoised_audio)
-        if delay_samples < len(denoised_audio):
-            delayed_signal[delay_samples:] = denoised_audio[:-delay_samples]
+def denoise_and_delay( noise_power, delay_ms, delay_gain, readFrom, writeTo):
+   global _AUDIO_FILE_
+   vid = ffmpeg.input(readFrom).video
+   au = ffmpeg.input(readFrom).audio
+   info = ffmpeg.probe(readFrom , cmd = "ffprobe")
+   noChannels = info ["streams"][1]["channels"]
+   au.output(_AUDIO_FILE_ , ac = noChannels).overwrite_output().run()
+   sample_rate , sample_originals = wav.read(_AUDIO_FILE_)
+   sample_float = sample_originals.astype(np.float64) #converting to float since we need higher percision 
+
+   noise_reduction_streanght = max(3,min(15,int(abs(noise_power)/2)))
+
+   denoised_audio = wiener (sample_float , mysize = noise_reduction_streanght)
+
+   delay_samples = int ((delay_ms/1000) * sample_rate )
+   delay_gain_decimal = delay_gain / 100.0
+
+   delayed_signal = np.zeros_like(denoised_audio)
+   if delay_samples < len(denoised_audio) :
+       delayed_signal[delay_samples:] = denoised_audio[:-delay_samples]
+       delayed_audio = denoised_audio + delayed_signal * delay_gain_decimal
+
+   if np.max(np.abs(delayed_audio)) > 0:
+       delayed_audio = delayed_audio * (32767 / np.max(np.abs(delayed_audio))*0.9)
+
+   data2 = np.asarray(delayed_audio , dtype = np.int16)
+   wav.write(_AUDIO_FILE_ , sample_rate , data2)
+   ffmpeg.output(vid,ffmpeg.input(_AUDIO_FILE_) , writeTo).overwrite_output().run()
+   return
+
+def frameInterpolation (targetFps , readFrom , writeTo):
+    stream = ffmpeg.input(readFrom)
+
+    vid = stream.video 
+    audio = stream.audio
+
+    info = ffmpeg.probe(readFrom , cmd = "ffprobe")
+    video_stream = next ((s for s in info['streams'] if s['codec_type'] == 'video' ), None)
+    if 'avg_frame_rate' in video_stream:
+        frame_rate_fraction = video_stream['avg_frame_rate']
+        if '/' in frame_rate_fraction:
+            num,den = map(int , frame_rate_fraction.split('/'))
+            original_fps = num / den if den != 0 else 0
+        else:
+            original_fps = float(frame_rate_fraction)
+    else:
+        original_fps = 30
+
+    if targetFps >= original_fps:
+        interpolated = vid.filter('minterpolate' ,
+                                  fps = targetFps,
+                                  mi_mode = 'mci',
+                                  mc_mode = 'aobmc',
+                                  me_mode = 'bidir')
+        ffmpeg.output(interpolated , audio , writeTo ,
+                      vcodec = 'libx264',
+                      acodec = 'aac').overwrite_output().run()
+    else:
+        decreased = vid.filter('fps',fps = targetFps)
+        ffmpeg.output(decreased , audio , writeTo , vcodec = 'libx264' , acodec = 'aac').overwrite_output().run()
         
-        # Mix original and delayed signal
-        delayed_audio = denoised_audio + delayed_signal * delay_gain
-    
-    # Normalize to prevent clipping
-    if np.max(np.abs(delayed_audio)) > 0:
-        delayed_audio = delayed_audio * (32767 / np.max(np.abs(delayed_audio)) * 0.9)
-    
-    # Convert back to int16 for saving
-    processed_audio = np.asarray(delayed_audio, dtype=np.int16)
-    
-    # Write processed audio to temporary file
-    wav.write(_AUDIO_FILE_, sample_rate, processed_audio)
-    
-    # Merge video with processed audio
-    ffmpeg.output(vid, ffmpeg.input(_AUDIO_FILE_), writeTo).overwrite_output().run()
-    
-    # Clean up temporary file (optional)
-    if os.path.exists(_AUDIO_FILE_):
-        os.remove(_AUDIO_FILE_)
-    
+
+
     return
-
-
-
 
 def voiceEnhancement(preEmphasisAlpha, filterOrder, readFrom, writeTo):
  
