@@ -1,14 +1,17 @@
 import ffmpeg
 from scipy.signal import butter, lfilter
 import scipy.io.wavfile as wav
+from scipy.signal import wiener
 
 
 import numpy as np
 import os
 _AUDIO_FILE_ = "audio.wav"
 APP_ROOT = os.path.dirname(os.path.abspath(__file__))
+
 UPLOAD_FOLDER = os.path.join(APP_ROOT, "static")
 pathMaker = lambda prefix, fileName: os.path.join(UPLOAD_FOLDER, f"{prefix}.{fileName.split('.')[-1]}")
+
 
 def upscaler(tw, th, readFrom, writeTo):
     stream = ffmpeg.input(readFrom).video
@@ -37,110 +40,71 @@ def makePhoneLike(filterOrder, sideGain, readFrom, writeTo):
     # ot = ffmpeg.output(prob, au, "video.mp4")
     return 
 
-def denoise_and_delay(readFrom, writeTo, noise_power_db, delay_ms, delay_gain_percent):
-    
-    global _AUDIO_FILE_
-    vid = ffmpeg.input(readFrom).video
-    au = ffmpeg.input(readFrom).audio
-    info = ffmpeg.probe(readFrom, cmd="ffprobe")
-    
-    noChannels = info["streams"][1]["channels"] 
-    audioStream = au.output(_AUDIO_FILE_, ac=noChannels).overwrite_output().run()
-    
-    sample_rate, samples_original = wav.read(_AUDIO_FILE_)
-    
-    filter_order = 4
-    low_cutoff = 300
-    high_cutoff = 3400
-    
-    noise_factor = 10 ** (noise_power_db / 20)
-    
-    b, a = butter(filter_order, [low_cutoff, high_cutoff], btype='bandpass', fs=sample_rate)
-    
-    
-    if len(samples_original.shape) > 1:  # For stereo audio
-        denoised_audio = np.zeros_like(samples_original)
-        for channel in range(samples_original.shape[1]):
-            denoised_audio[:, channel] = lfilter(b, a, samples_original[:, channel])
-    else:  # For mono audio
-        denoised_audio = lfilter(b, a, samples_original)
-    
-    # reducing noise
-    denoised_audio = denoised_audio * noise_factor
-    
-    
-    delay_samples = int((delay_ms / 1000) * sample_rate)
-    delay_gain = delay_gain_percent / 100
-    
-    
-    if len(denoised_audio.shape) > 1:  # For stereo audio
-        delayed_audio = np.zeros_like(denoised_audio)
-        for channel in range(denoised_audio.shape[1]):
-            delayed_channel = np.zeros_like(denoised_audio[:, channel])
-            delayed_channel[delay_samples:] = denoised_audio[:-delay_samples, channel] if delay_samples < len(denoised_audio) else 0
-            #scale the delayed audio        
-            delayed_channel = delayed_channel * delay_gain
-            # Mix with the original
-            delayed_audio[:, channel] = denoised_audio[:, channel] + delayed_channel
-    else:  # For mono audio
-        delayed_audio = np.zeros_like(denoised_audio)
-        delayed_audio[delay_samples:] = denoised_audio[:-delay_samples] if delay_samples < len(denoised_audio) else 0
-        delayed_audio = delayed_audio * delay_gain
-        delayed_audio = denoised_audio + delayed_audio
-    
-    # Normalize to prevent clipping
-    max_val = np.max(np.abs(delayed_audio))
-    if max_val > 32767:  # Max value for 16-bit audio
-        delayed_audio = delayed_audio * (32767 / max_val)
-    
-    # Convert back to int16 for saving
-    delayed_audio = np.asarray(delayed_audio, dtype=np.int16)
-    
-    # Save the processed audio
-    wav.write(_AUDIO_FILE_, sample_rate, delayed_audio)
-    
-    # Combine processed audio with the original video
-    auInpF = ffmpeg.input(_AUDIO_FILE_)
-    ffmpeg.output(vid, auInpF, writeTo).overwrite_output().run()
-    
-    return
 
+def denoise_and_delay( noise_power, delay_ms, delay_gain, readFrom, writeTo):
+   global _AUDIO_FILE_
+   vid = ffmpeg.input(readFrom).video
+   au = ffmpeg.input(readFrom).audio
+   info = ffmpeg.probe(readFrom , cmd = "ffprobe")
+   noChannels = info ["streams"][1]["channels"]
+   au.output(_AUDIO_FILE_ , ac = noChannels).overwrite_output().run()
+   sample_rate , sample_originals = wav.read(_AUDIO_FILE_)
+   sample_float = sample_originals.astype(np.float64) #converting to float since we need higher percision 
 
+   noise_reduction_streanght = max(3,min(15,int(abs(noise_power)/2)))
 
+   denoised_audio = wiener (sample_float , mysize = noise_reduction_streanght)
 
-def applyGainCompression(threshold_db, limiter_db, readFrom, writeTo):
-    
+   delay_samples = int ((delay_ms/1000) * sample_rate )
+   delay_gain_decimal = delay_gain / 100.0
+
+   delayed_signal = np.zeros_like(denoised_audio)
+   if delay_samples < len(denoised_audio) :
+       delayed_signal[delay_samples:] = denoised_audio[:-delay_samples]
+       delayed_audio = denoised_audio + delayed_signal * delay_gain_decimal
+
+   if np.max(np.abs(delayed_audio)) > 0:
+       delayed_audio = delayed_audio * (32767 / np.max(np.abs(delayed_audio))*0.9)
+
+   data2 = np.asarray(delayed_audio , dtype = np.int16)
+   wav.write(_AUDIO_FILE_ , sample_rate , data2)
+   ffmpeg.output(vid,ffmpeg.input(_AUDIO_FILE_) , writeTo).overwrite_output().run()
+   return
+
+def frameInterpolation (targetFps , readFrom , writeTo):
     stream = ffmpeg.input(readFrom)
-    
-    # Handle threshold parameter (ensure it's negative)
-    abs_threshold = abs(threshold_db) if threshold_db < 0 else threshold_db
-    threshold_point = f"-{abs_threshold}/-{abs_threshold}"
-    
-    # Handle limiter parameter
-    mid_point = f"-{abs_threshold/2}/-{abs_threshold+limiter_db/2}"
-    limiter_point = f"0/-{limiter_db}"
-    
-    # Combine points to create the compression curve
-    points = f"{threshold_point}|{mid_point}|{limiter_point}"
-    
-    # Apply compression filter using 'compand'
-    compressed_audio = stream.audio.filter(
-        'compand',
-        attacks='0.01',
-        decays='0.5',
-        points=points,
-        gain='0'
-    )
-    
-    # Combine original video with compressed audio
-    result = ffmpeg.output(stream.video, compressed_audio, writeTo).overwrite_output().run()
+
+    vid = stream.video 
+    audio = stream.audio
+
+    info = ffmpeg.probe(readFrom , cmd = "ffprobe")
+    video_stream = next ((s for s in info['streams'] if s['codec_type'] == 'video' ), None)
+    if 'avg_frame_rate' in video_stream:
+        frame_rate_fraction = video_stream['avg_frame_rate']
+        if '/' in frame_rate_fraction:
+            num,den = map(int , frame_rate_fraction.split('/'))
+            original_fps = num / den if den != 0 else 0
+        else:
+            original_fps = float(frame_rate_fraction)
+    else:
+        original_fps = 30
+
+    if targetFps >= original_fps:
+        interpolated = vid.filter('minterpolate' ,
+                                  fps = targetFps,
+                                  mi_mode = 'mci',
+                                  mc_mode = 'aobmc',
+                                  me_mode = 'bidir')
+        ffmpeg.output(interpolated , audio , writeTo ,
+                      vcodec = 'libx264',
+                      acodec = 'aac').overwrite_output().run()
+    else:
+        decreased = vid.filter('fps',fps = targetFps)
+        ffmpeg.output(decreased , audio , writeTo , vcodec = 'libx264' , acodec = 'aac').overwrite_output().run()
+        
 
 
-
-
-
-
-
+    return
 
 def voiceEnhancement(preEmphasisAlpha, filterOrder, readFrom, writeTo):
  
@@ -238,5 +202,11 @@ def colorInvert(readFrom, writeTo):
     # Run the ffmpeg command
     output.overwrite_output().run()
 
+    return
+
+def applyGainCompression():
+    return
+
+def voiceEhancement():
     return
 
