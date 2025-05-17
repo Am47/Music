@@ -378,9 +378,11 @@
             
             const applyFilters = async () => {
                 document.getElementById("applyButton").textContent = "Applying filters..."
+                document.getElementById("playButton").disabled = true;
                 await fetch("/applyfilter/", {
                     method: "GET",
                 }).then(e => {  
+                    document.getElementById("playButton").disabled = false;
                     document.getElementById("applyButton").textContent = "Apply Filters"
                     if (e.status == 200) {
                         document.getElementById("applyButton").style = "background-color: gray"
@@ -399,13 +401,12 @@
                     }
 
                 })
-                // console.error("Unimplemented method applyFilters")
             }
             const stream = async () => {
                 //fill me
                 await fetch("/stream/", {
                     method: "GET",
-                }).then(e=> {
+                }).then(e => {
                     document.getElementById("videoContainer").style = "display: block"
                     document.getElementById("vidElement").load()
                     document.getElementById("vidElement").play()
