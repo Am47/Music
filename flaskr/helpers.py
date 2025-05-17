@@ -136,12 +136,6 @@ def applyGainCompression(threshold_db, limiter_db, readFrom, writeTo):
     result = ffmpeg.output(stream.video, compressed_audio, writeTo).overwrite_output().run()
 
 
-
-
-
-
-
-
 def voiceEnhancement(preEmphasisAlpha, filterOrder, readFrom, writeTo):
  
     global _AUDIO_FILE_
