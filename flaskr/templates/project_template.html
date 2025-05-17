@@ -196,9 +196,9 @@
                     </div>
                     <button onclick="addVideoFilter()">Add</button>
                 </div>
-                <button onclick="configureFilters()">Configure Filters</button>
+                <button onclick="configureFilters()" id="configButton">Configure Filters</button>
                 <button onclick="applyFilters()" id="applyButton">Apply Filters</button>
-                <button onclick="stream()">Play</button>
+                <button onclick="stream()" id="playButton" disabled>Play</button>
                 <div id="videoContainer" style="display: none">
                     <video width="640" height="360" id="vidElement" controls>
                         <!-- fill with the correct URL and the correct format (e.g. mp4/webm)-->
@@ -234,6 +234,9 @@
             const clean = async () => {
                 filterList = [];
                 refreshFiltersList();
+                document.getElementById("applyButton").style = "007bff"
+                document.getElementById("applyButton").cursor = "default"
+                document.getElementById("applyButton").disabled = false
                 await configureFilters();  // covers edgecase of user cleaning but not configuring again! 
             };
             const addVideoFilter = () => {
@@ -344,7 +347,7 @@
                     buttonFileStyler(false, "pointer", "#007bff", true,  true, "grey", "default")
                 }
                 request.send(formData)
-                
+                document.getElementById("playButton").disabled = false;
             };
 
             const deleteVideo = async () => { 
@@ -357,6 +360,8 @@
                 }).then(e=> {
                         sessionStorage.setItem("uploaded", "false")
                         buttonFileStyler(true, "default", "grey", false, false, "#007bff", "pointer")
+                        document.getElementById("applyButton").style = "background-color: #007bff"
+                        document.getElementById("applyButton").disabled = false
                 })
                 
             };
@@ -372,9 +377,17 @@
             };
             
             const applyFilters = async () => {
+                document.getElementById("applyButton").textContent = "Applying filters..."
                 await fetch("/applyfilter/", {
                     method: "GET",
-                }).then(e => {
+                }).then(e => {  
+                    document.getElementById("applyButton").textContent = "Apply Filters"
+                    if (e.status == 200) {
+                        document.getElementById("applyButton").style = "background-color: gray"
+                        document.getElementById("applyButton").cursor = "auto"
+                        document.getElementById("applyButton").disabled = true
+                    }
+                    
                     if (e.status == 403) {
 
                         document.getElementById("applyButton").innerText = "Could not be done!"
@@ -384,6 +397,7 @@
                             document.getElementById("applyButton").style = "background-color: #007bff"
                         }, 3000)
                     }
+
                 })
                 // console.error("Unimplemented method applyFilters")
             }

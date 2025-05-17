@@ -1,12 +1,12 @@
 from flask import Flask, request, render_template, make_response, send_from_directory
 import os
-from helpers import upscaler, makePhoneLike , denoise_and_delay, applyGainCompression, applyGrayscale, colorInvert, voiceEnhancement
+from helpers import upscaler, makePhoneLike , denoise_and_delay, applyGainCompression, applyGrayscale, colorInvert, voiceEnhancement, pathMaker
 
-app = Flask(__name__, static_folder="static",instance_relative_config=True)
+app = Flask(__name__, static_folder="static", instance_relative_config=True)
 _UPLOADED_ = 0
 _FILE_NAME_ = ""
 _CONFIGS_ = []
-
+_INITIAL_FILE_NAME_ = ""
 APP_ROOT = os.path.dirname(os.path.abspath(__file__))
 UPLOAD_FOLDER = os.path.join(APP_ROOT, "static")
 
@@ -17,7 +17,7 @@ def hello_world():
 
 @app.route("/post/", methods=["POST"])
 def uploadedVideo():
-    global _UPLOADED_, _FILE_NAME_
+    global _UPLOADED_, _FILE_NAME_, _INITIAL_FILE_NAME_
     if _UPLOADED_ == 1:
         mr = make_response(render_template("project_template.html"), 404)
         mr.headers["res"] = "You've already uploaded a file!"
@@ -26,18 +26,19 @@ def uploadedVideo():
         request.files["file"].save(request.files["file"].filename)
         _UPLOADED_ = 1
         _FILE_NAME_ = request.files["file"].filename
-        print(f"File uploaded: {_FILE_NAME_}")#
+        _INITIAL_FILE_NAME_ = _FILE_NAME_
     return render_template("project_template.html")
 
 
 
 @app.route("/delete/", methods=["DELETE"])
 def deletedVideo():
-    global _UPLOADED_, _FILE_NAME_
+    global _UPLOADED_, _FILE_NAME_, _INITIAL_FILE_NAME_
     if _UPLOADED_ == 1:
         _UPLOADED_ = 0
-        os.remove(_FILE_NAME_)
-        _FILE_NAME_ = ""        
+        os.remove(_INITIAL_FILE_NAME_)
+        _FILE_NAME_ = ""
+        _INITIAL_FILE_NAME_ = ""        
         mr = make_response(render_template("project_template.html"), 204)
         mr.headers["res"] = "file deleted!"
         return mr
@@ -46,7 +47,9 @@ def deletedVideo():
 
 @app.route("/configurefilter/", methods=["POST"])
 def saveConfiguration():
-    global _CONFIGS_
+    global _CONFIGS_, _FILE_NAME_
+    if _INITIAL_FILE_NAME_:  
+        _FILE_NAME_ = _INITIAL_FILE_NAME_
     _CONFIGS_.clear()
     for l in request.get_json():
         _CONFIGS_.append([l["name"], {v["name"]: v["value"] for v in l["props"]}]) ## For easier use!
@@ -55,7 +58,7 @@ def saveConfiguration():
 
 @app.route("/applyfilter/", methods=["GET"])
 def applyFilter():
-    global _CONFIGS_, _FILE_NAME_
+    global _CONFIGS_, _FILE_NAME_, _INITIAL_FILE_NAME_
     if not _CONFIGS_ or not _FILE_NAME_:
         mr = make_response(render_template("project_template.html"), 403)
         mr.headers["res"] = "Missing file or config!"
@@ -65,9 +68,9 @@ def applyFilter():
         for (i, (k, v)) in enumerate(_CONFIGS_):
             prevFileName = _FILE_NAME_
             if i == (configSize - 1):
-                _FILE_NAME_ = os.path.join(UPLOAD_FOLDER, f"result.{_FILE_NAME_.split('.')[-1]}")
+                _FILE_NAME_ = pathMaker("result", _FILE_NAME_)
             else:
-                _FILE_NAME_ = os.path.join(UPLOAD_FOLDER, f"temp{i}.{_FILE_NAME_.split('.')[-1]}")
+                _FILE_NAME_ = pathMaker(f"temp{i}", _FILE_NAME_)
             if k == "phone":
                 makePhoneLike(int(v["phoneFilterOrder"]), float(v["phoneSideGain"]), prevFileName, _FILE_NAME_)
             elif k == "upscale":
@@ -82,9 +85,8 @@ def applyFilter():
                 voiceEnhancement(int(v["preemphasisAlpha"]), int(v["highPassFilter"]), prevFileName, _FILE_NAME_)
             elif k == "colorinvert":
                 colorInvert(prevFileName, _FILE_NAME_)
-            os.remove(prevFileName)
-
-
+            if i:
+                os.remove(prevFileName)
         return render_template("project_template.html")
     
 @app.route("/stream/", methods=["GET"])

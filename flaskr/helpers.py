@@ -4,12 +4,11 @@ import scipy.io.wavfile as wav
 
 
 import numpy as np
-# from pydub import AudioSegment
 import os
 _AUDIO_FILE_ = "audio.wav"
 APP_ROOT = os.path.dirname(os.path.abspath(__file__))
-#UPLOAD_FOLDER = os.path.join(APP_ROOT, 'static', "result.mp4")
-
+UPLOAD_FOLDER = os.path.join(APP_ROOT, "static")
+pathMaker = lambda prefix, fileName: os.path.join(UPLOAD_FOLDER, f"{prefix}.{fileName.split('.')[-1]}")
 
 def upscaler(tw, th, readFrom, writeTo):
     stream = ffmpeg.input(readFrom).video
@@ -27,8 +26,7 @@ def makePhoneLike(filterOrder, sideGain, readFrom, writeTo):
     if os.path.exists(_AUDIO_FILE_):
         os.remove(_AUDIO_FILE_)
 
-    os.system(f'ffmpeg -i {readFrom} -af "pan=2c|c0={sideGain}*c0|c1={1-sideGain}*c1" {_AUDIO_FILE_}')
-    
+    os.system(f'ffmpeg -i "{readFrom}" -af "pan=2c|c0={sideGain}*c0|c1={1-sideGain}*c1" {_AUDIO_FILE_}')
     sample_rate, samples_original = wav.read(_AUDIO_FILE_)
     num, denom = butter(filterOrder,  [800, 3400] , "bandpass", fs=sample_rate) 
     ot = lfilter(num, denom, samples_original)
@@ -238,9 +236,7 @@ def colorInvert(readFrom, writeTo):
         acodec='copy'  # Copy audio to avoid re-encoding
     )
     # Run the ffmpeg command
-    out, err = output.overwrite_output().run(capture_stdout=True, capture_stderr=True)
-    print("FFmpeg stdout:", out)
-    print("FFmpeg stderr:", err)
+    output.overwrite_output().run()
 
     return
 
