@@ -1,7 +1,7 @@
 from flask import Flask, request, render_template, make_response, send_from_directory
 import os
 
-from helpers import upscaler, makePhoneLike , denoise_and_delay, applyGainCompression, applyGrayscale, colorInvert, voiceEnhancement, pathMaker
+from helpers import upscaler, makePhoneLike , denoise_and_delay, applyGrayscale, colorInvert, voiceEnhancement,  pathMaker, makeCarLike
 app = Flask(__name__, static_folder="static", instance_relative_config=True)
 
 
@@ -117,8 +117,8 @@ def applyFilter():
                 denoise_and_delay( float (v["noisePower"]) , int(v["delay"]) , int(v["delayGain"]) , prevFileName , _FILE_NAME_)
             elif k == "grayscale":
                 applyGrayscale(prevFileName,_FILE_NAME_)
-            elif k == "gainCompressor":
-                applyGainCompression(float(v["gainCompressorThreshold"]), float(v["limiterThreshold"]), prevFileName, _FILE_NAME_)
+            elif k == "car":
+                makeCarLike(float(v["carSideGain"]), int(v["carFilterOrder"]), prevFileName, _FILE_NAME_)
             elif k == "voiceEnhancement":
                 voiceEnhancement(int(v["preemphasisAlpha"]), int(v["highPassFilter"]), prevFileName, _FILE_NAME_)
             elif k == "colorinvert":
