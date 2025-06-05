@@ -84,11 +84,13 @@ def saveConfiguration():
     _CONFIGS_.clear()
     for l in request.get_json():
         # Coupling between filter name and parameters -- using dict comprehension
-        _CONFIGS_.append([l["name"], {v["name"]: v["value"] for v in l["props"]}]) 
-    return render_template('project_template.html')
+        _CONFIGS_.append([l["name"], {v["name"]: v["value"] for v in l["props"]}])
+    mr = make_response(render_template("project_template.html"), 200) 
+    if not request.get_json(): mr.headers["res"] = "cleaned"
+    return mr
     
 
-@app.route("/applyfilter/", methods=["GET"])
+@app.route("/applyfilter/", methods=["PATCH"])
 def applyFilter():
     global _CONFIGS_, _FILE_NAME_, _INITIAL_FILE_NAME_
     # should not be able to apply a filter if nothing has been uploaded! 
