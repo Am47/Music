@@ -1,7 +1,7 @@
 from flask import Flask, request, render_template, make_response, send_from_directory
 import os
 
-from helpers import upscaler, makePhoneLike , denoise_and_delay, applyGainCompression, applyGrayscale, colorInvert, voiceEnhancement, pathMaker
+from helpers import upscaler, makePhoneLike , denoise_and_delay, applyGrayscale, colorInvert, voiceEnhancement,  pathMaker, makeCarLike, frameInterpolation
 app = Flask(__name__, static_folder="static", instance_relative_config=True)
 
 
@@ -61,6 +61,7 @@ def deletedVideo():
         _UPLOADED_ = 0
         # removing the original uploaded file
         os.remove(_INITIAL_FILE_NAME_)
+        os.remove(_FILE_NAME_)
         _FILE_NAME_ = ""
         _INITIAL_FILE_NAME_ = ""        
         # 204 to indicate the success of an op but no content to return
@@ -117,8 +118,8 @@ def applyFilter():
                 denoise_and_delay( float (v["noisePower"]) , int(v["delay"]) , int(v["delayGain"]) , prevFileName , _FILE_NAME_)
             elif k == "grayscale":
                 applyGrayscale(prevFileName,_FILE_NAME_)
-            elif k == "gainCompressor":
-                applyGainCompression(float(v["gainCompressorThreshold"]), float(v["limiterThreshold"]), prevFileName, _FILE_NAME_)
+            elif k == "car":
+                makeCarLike(float(v["carSideGain"]), int(v["carFilterOrder"]), prevFileName, _FILE_NAME_)
             elif k == "voiceEnhancement":
                 voiceEnhancement(int(v["preemphasisAlpha"]), int(v["highPassFilter"]), prevFileName, _FILE_NAME_)
             elif k == "colorinvert":
