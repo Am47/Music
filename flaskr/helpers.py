@@ -207,33 +207,71 @@ def colorInvert(readFrom, writeTo):
     return
 
 
-def applyGainCompression(threshold_db, limiter_db, readFrom, writeTo):
-    
-    stream = ffmpeg.input(readFrom)
-    
-    # Handle threshold parameter (ensure it's negative)
-    abs_threshold = abs(threshold_db) if threshold_db < 0 else threshold_db
-    threshold_point = f"-{abs_threshold}/-{abs_threshold}"
-    
-    # Handle limiter parameter
-    mid_point = f"-{abs_threshold/2}/-{abs_threshold+limiter_db/2}"
-    limiter_point = f"0/-{limiter_db}"
-    
-    # Combine points to create the compression curve
-    points = f"{threshold_point}|{mid_point}|{limiter_point}"
-    
-    # Apply compression filter using 'compand'
-    compressed_audio = stream.audio.filter(
-        'compand',
-        attacks='0.01',
-        decays='0.5',
-        points=points,
-        gain='0'
-    )
-    
-    # Combine original video with compressed audio
-    result = ffmpeg.output(stream.video, compressed_audio, writeTo).overwrite_output().run()
 
+def makeCarLike(sideGain_db, filterOrder, readFrom, writeTo):
+    global _AUDIO_FILE_
+    
+    # Extract video stream
+    vid = ffmpeg.input(readFrom).video
+    
+    # Clean up existing audio file
+    if os.path.exists(_AUDIO_FILE_):
+        os.remove(_AUDIO_FILE_)
+        
+    # Convert sideGain from dB to linear
+    sideGain_linear = 10 ** (sideGain_db / 20)
+    
+    # Calculate pan coefficients for stereo enhancement
+    # In fact, for each output channel (new left or new right), we take 50% of the original left and 50% of the original right, 
+    # then push them outward or inward depending on sideGain_linear.
+    # This widens or narrows the stereo image.
+    left_c0 = 0.5 + sideGain_linear * 0.5
+    left_c1 = 0.5 - sideGain_linear * 0.5
+    right_c0 = 0.5 - sideGain_linear * 0.5
+    right_c1 = 0.5 + sideGain_linear * 0.5
 
-
-
+    # Extract audio with stereo enhancement
+    os.system(f'ffmpeg -i "{readFrom}" -af "pan=2c|c0={left_c0}*c0+{left_c1}*c1|c1={right_c0}*c0+{right_c1}*c1" {_AUDIO_FILE_}')
+    
+    # Read audio file. samples can be numpy array of shape (num_samples,) or is it is stereo it is (num_samples,2)
+    # Each element is a signed 16-bit integer (int16) in the range [–32768, +32767].
+    sample_rate, samples = wav.read(_AUDIO_FILE_)
+    
+    # Convert to float for processing(as lfilter works best with float numbers
+    samples_float = samples.astype(np.float32) / 32768.0
+    
+    # Apply low-pass filter at 10000 Hz as specified
+    # Butterworth design routines expect a cutoff in the range [0, 1], where 1 corresponds to Nyquist.
+    nyquist = sample_rate / 2
+    normalized_cutoff = 10000 / nyquist
+    num, denom = butter(filterOrder, normalized_cutoff, btype="low")
+    
+    # Process each channel separately if stereo[Processes left channel separately: samples_float[:, 0],Processes right channel separately: samples_float[:, 1]]
+    # For mono just apply the filter
+    if len(samples_float.shape) == 2:
+        filtered_samples = np.zeros_like(samples_float)
+        for channel in range(samples_float.shape[1]):
+            filtered_samples[:, channel] = lfilter(num, denom, samples_float[:, channel])
+    else:
+        filtered_samples = lfilter(num, denom, samples_float)
+    
+    
+    # Convert back to int16 with proper scaling
+    max_val = np.max(np.abs(filtered_samples))
+    if max_val > 1.0:
+        filtered_samples = filtered_samples / max_val
+    
+    # Final outputed sample which is then written back to the wav file
+    output_samples = (filtered_samples * 32767).astype(np.int16)
+    
+    
+    # Write processed audio back
+    wav.write(_AUDIO_FILE_, sample_rate, output_samples)
+    
+    # Combine audio and video
+    auInpF = ffmpeg.input(_AUDIO_FILE_)
+    ffmpeg.output(vid, auInpF, writeTo).overwrite_output().run()
+    
+    return
+        
+    
