@@ -1,7 +1,7 @@
 from flask import Flask, request, render_template, make_response, send_from_directory
 import os
 
-from helpers import upscaler, makePhoneLike , denoise_and_delay, applyGainCompression, applyGrayscale, colorInvert, voiceEnhancement, pathMaker
+from helpers import upscaler, makePhoneLike , denoise_and_delay, applyGainCompression, applyGrayscale, colorInvert, voiceEnhancement, pathMaker, frameInterpolation
 app = Flask(__name__, static_folder="static", instance_relative_config=True)
 
 
@@ -61,6 +61,7 @@ def deletedVideo():
         _UPLOADED_ = 0
         # removing the original uploaded file
         os.remove(_INITIAL_FILE_NAME_)
+        os.remove(_FILE_NAME_)
         _FILE_NAME_ = ""
         _INITIAL_FILE_NAME_ = ""        
         # 204 to indicate the success of an op but no content to return
