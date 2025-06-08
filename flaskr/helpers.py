@@ -34,7 +34,7 @@ def makePhoneLike(filterOrder, sideGain, readFrom, writeTo):
     # the same amount but I am not sure that's what is required.   
     os.system(f'ffmpeg -i "{readFrom}" -af "pan=2c|c0={sideGain}*c0|c1={1-sideGain}*c1" {_AUDIO_FILE_}')
     sample_rate, samples_original = wav.read(_AUDIO_FILE_)
-    # The stated bandpass frequencies in the Project PDF are too wide! so I chose 800-3400 
+    # The stated bandpass frequencies in the Project PDF are too wide! (not so phonelike) so I chose 800-3400 
     num, denom = butter(filterOrder,  [800, 3400] , "bandpass", fs=sample_rate) 
     ot = lfilter(num, denom, samples_original)
     data2 = np.asarray(ot, dtype=np.int16) 
