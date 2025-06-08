@@ -54,20 +54,33 @@ def denoise_and_delay( noise_power, delay_ms, delay_gain, readFrom, writeTo):
    sample_rate , sample_originals = wav.read(_AUDIO_FILE_)
    sample_float = sample_originals.astype(np.float64) #converting to float since we need higher percision 
 
-   noise_reduction_streanght = max(3,min(15,int(abs(noise_power)/2)))
+   noise_reduction_streanght = max(3,min(15,int(abs(noise_power)/2))) #3-15 is the sweet spot, higher would oversmooth audio, lower would be ineffective
 
-   denoised_audio = wiener (sample_float , mysize = noise_reduction_streanght)
+   if len(sample_originals.shape) > 1: #chacking whether studio or mono
+       denoised_audio = np.zeros_like(sample_float)
+       for channel in range(sample_originals.shape[1]):
+           denoised_audio = wiener(sample_float[: , channel] , mysize = noise_reduction_streanght)
+   else:
+        denoised_audio = wiener (sample_float , mysize = noise_reduction_streanght)
 
-   delay_samples = int ((delay_ms/1000) * sample_rate )
+   delay_samples = int ((delay_ms/1000) * sample_rate ) 
    delay_gain_decimal = delay_gain / 100.0
 
-   delayed_signal = np.zeros_like(denoised_audio)
-   if delay_samples < len(denoised_audio) :
-       delayed_signal[delay_samples:] = denoised_audio[:-delay_samples]
-       delayed_audio = denoised_audio + delayed_signal * delay_gain_decimal
+   if len(denoised_audio.shape) > 1:
+       delayed_audio = np.zeros_like(denoised_audio)
+       for channel in range(denoised_audio.shape[1]):
+           delayed_signal = np.zeros_like(denoised_audio[: , channel])
+           if delay_samples < len(denoised_audio):
+               delayed_signal[delay_samples : ] = denoised_audio [: -delay_samples , channel]
+           delayed_audio[: channel] = denoised_audio[: ,channel] + delayed_signal * delay_gain
+   else:
+       delayed_signal = np.zeros_like(denoised_audio)
+       if delay_samples < len(denoised_audio):
+           delayed_signal [delay_samples : ] = denoised_audio[: -delay_samples]
+       delayed_audio = denoised_audio + delayed_signal * delay_gain
 
    if np.max(np.abs(delayed_audio)) > 0:
-       delayed_audio = delayed_audio * (32767 / np.max(np.abs(delayed_audio))*0.9)
+       delayed_audio = delayed_audio * (32767 / np.max(np.abs(delayed_audio))*0.9) #normalize if overflown, 0.9 to avoid hitting the edges.
 
    data2 = np.asarray(delayed_audio , dtype = np.int16)
    wav.write(_AUDIO_FILE_ , sample_rate , data2)
@@ -97,16 +110,14 @@ def frameInterpolation (targetFps , readFrom , writeTo):
                                   fps = targetFps,
                                   mi_mode = 'mci',
                                   mc_mode = 'aobmc',
-                                  me_mode = 'bidir')
+                                  me_mode = 'bidir') #using bidirectional , past and future frams
         ffmpeg.output(interpolated , audio , writeTo ,
                       vcodec = 'libx264',
                       acodec = 'aac').overwrite_output().run()
     else:
         decreased = vid.filter('fps',fps = targetFps)
         ffmpeg.output(decreased , audio , writeTo , vcodec = 'libx264' , acodec = 'aac').overwrite_output().run()
-        
-
-
+    
     return
 
 
