@@ -15,6 +15,7 @@ pathMaker = lambda prefix, fileName: os.path.join(UPLOAD_FOLDER, f"{prefix}.{fil
 
 def upscaler(tw, th, readFrom, writeTo):
     stream = ffmpeg.input(readFrom).video
+    # The magic happens here! - using ffmpeg scale! 
     vid = stream.filter("scale", w=tw, h=th) 
     auInpf = ffmpeg.input(readFrom).audio
     ffmpeg.output(vid, auInpf, writeTo).overwrite_output().run()
@@ -28,16 +29,18 @@ def makePhoneLike(filterOrder, sideGain, readFrom, writeTo):
     
     if os.path.exists(_AUDIO_FILE_):
         os.remove(_AUDIO_FILE_)
-
+    # One side is attenuated by sideGain and the other by (1-sideGain). Setting sideGain to 1 would 
+    # turn the other channel completely off! -- one could make it so that both sides are attenuated by 
+    # the same amount but I am not sure that's what is required.   
     os.system(f'ffmpeg -i "{readFrom}" -af "pan=2c|c0={sideGain}*c0|c1={1-sideGain}*c1" {_AUDIO_FILE_}')
     sample_rate, samples_original = wav.read(_AUDIO_FILE_)
+    # The stated bandpass frequencies in the Project PDF are too wide! so I chose 800-3400 
     num, denom = butter(filterOrder,  [800, 3400] , "bandpass", fs=sample_rate) 
     ot = lfilter(num, denom, samples_original)
     data2 = np.asarray(ot, dtype=np.int16) 
     wav.write(_AUDIO_FILE_, sample_rate, data2)
     auInpF = ffmpeg.input(_AUDIO_FILE_)
     ffmpeg.output(vid, auInpF, writeTo).overwrite_output().run()
-    # ot = ffmpeg.output(prob, au, "video.mp4")
     return 
 
 

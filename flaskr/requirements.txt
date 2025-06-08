@@ -1,0 +1,6 @@
+Requirements:
+Flask
+scipy 
+numpy
+# A ffmpeg wrapper library! 
+pip install ffmpeg-python  
