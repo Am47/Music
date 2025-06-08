@@ -379,9 +379,9 @@
                     }
                 })
             };
-            const applyButtonDynamizer = (text)=> {
+            const applyButtonDynamizer = (text, backgroundColor)=> {
                 document.getElementById("applyButton").innerText = text
-                document.getElementById("applyButton").style = "background-color: red"
+                document.getElementById("applyButton").style = "background-color: " + backgroundColor
                 setTimeout(()=> {
                     document.getElementById("applyButton").innerText = "Apply filter"
                     document.getElementById("applyButton").style = "background-color: #007bff"
@@ -401,9 +401,9 @@
                         document.getElementById("applyButton").disabled = true
                     }
                     else if (e.status == 403) {
-                        applyButtonDynamizer("Could not be done!")
+                        applyButtonDynamizer("Could not be done!", "red")
                     } else if (e.status == 400) {
-                        applyButtonDynamizer("You tried to apply some unimplemented filters")
+                        applyButtonDynamizer("You tried to apply some unimplemented filters", "orange")
                     }
 
                 })
