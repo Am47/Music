@@ -138,7 +138,7 @@ def applyFilter():
 
 
 """
-Serving the filtered or unfiltered file
+Serving the filtered file
 """
 @app.route("/stream/", methods=["GET"])
 def stream():
