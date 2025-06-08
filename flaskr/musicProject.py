@@ -94,8 +94,9 @@ def saveConfiguration():
 def applyFilter():
     global _CONFIGS_, _FILE_NAME_, _INITIAL_FILE_NAME_
     # should not be able to apply a filter if nothing has been uploaded! 
+    statusCode = 403
     if not _CONFIGS_ or not _FILE_NAME_:
-        mr = make_response(render_template("project_template.html"), 403)
+        mr = make_response(render_template("project_template.html"), statusCode)
         mr.headers["res"] = "Missing file or config!"
         return mr   
     else:
@@ -128,13 +129,15 @@ def applyFilter():
                 colorInvert(prevFileName, _FILE_NAME_)
             elif k == "frameInterpolate":
                 frameInterpolation(float (v["frameInterpolateTargetFps"]) , prevFileName , _FILE_NAME_)
+            else: 
+                statusCode = 400
             """ 
             we don't want to remove the original file as we want to be able to
             clean -> config -> apply
             """ 
             if i:
                 os.remove(prevFileName)
-        return render_template("project_template.html")
+        return make_response(render_template("project_template.html"), 200 if statusCode != 400 else statusCode)
 
 
 """
